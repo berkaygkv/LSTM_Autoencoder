@@ -1,0 +1,36 @@
+{
+    "encoder": {
+        "input_layer": {
+            "n_of_units": 512,
+            "return_sequences": true,
+            "drop_out_rate": 0.4
+        },
+        "encoding_layer_1": {
+            "n_of_units": 256,
+            "return_sequences": true,
+            "drop_out_rate": 0.4
+        },
+        "encoding_layer_2": {
+            "n_of_units": 128,
+            "return_sequences": false,
+            "drop_out_rate": 0.4
+        }
+    },
+    "decoder": {
+        "decoding_layer_1": {
+            "n_of_units": 128,
+            "return_sequences": true,
+            "drop_out_rate": 0.4
+        },
+        "decoding_layer_2": {
+            "n_of_units": 256,
+            "return_sequences": true,
+            "drop_out_rate": 0.4
+        },
+        "decoding_layer_3": {
+            "n_of_units": 512,
+            "return_sequences": true,
+            "drop_out_rate": 0.4
+        }
+    }
+}
