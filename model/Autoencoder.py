@@ -7,6 +7,7 @@ from tensorflow import keras
 from pykalman import KalmanFilter
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from tensorflow import keras
+from scipy.signal import find_peaks
 import ta
 from scipy.signal import argrelextrema
 import warnings
@@ -47,17 +48,10 @@ class Model(keras.Model):
         self.scaled_columns = {}
         self.history = None
         self.model = None
+        self.kf_plot_df = pd.DataFrame()
 
     def __repr__(self):
-        return f"""Model(
-        DataFrame = df, 
-        columns = {self.columns}, 
-        n_of_units = {self.n_of_units}, 
-        dropout_rate = {self.dropout_rate}, 
-        batch_size = {self.batch_size}, 
-        epochs = {self.epochs}, 
-        time_steps = {self.time_steps}
-        )"""
+        return f"Model(dataframe=df, columns={self.columns}, n_of_units={self.n_of_units}, dropout_rate={self.dropout_rate}, time_steps={self.time_steps})"
 
     def apply_kfilter(self, dataframe):
         kf = KalmanFilter(
@@ -71,9 +65,9 @@ class Model(keras.Model):
         return dataframe
 
     def plot_kfilter(self):
-        fig_kf = px.line(x='Date', y='Close', data_frame=self.df.reset_index(
+        fig_kf = px.line(x='Date', y='Close', data_frame=self.kf_plot_df.reset_index(
         ), color_discrete_sequence=['red'])
-        fig_original = px.line(x='Date', y='Close_original', data_frame=self.df.reset_index(
+        fig_original = px.line(x='Date', y='Close_original', data_frame=self.kf_plot_df.reset_index(
         ), color_discrete_sequence=['green'])
         fig_original.update_traces(line={'width': 0.5})
         fig = go.Figure(fig_kf.data + fig_original.data)
@@ -85,6 +79,7 @@ class Model(keras.Model):
             self.df)]
         if self.KFilter_covariance:
             self.train = self.apply_kfilter(self.train)
+        self.kf_plot_df = self.train.copy()
         print(
             f"Train shape: {self.train.shape}, Test shape: {self.test.shape}")
 
@@ -96,6 +91,9 @@ class Model(keras.Model):
                 self.train[column] = scaler.transform(self.train[[column]])
                 self.test[column] = scaler.transform(self.test[[column]])
                 self.scaled_columns.update({column: True})
+                if column == "Close":
+                    self.close_scaler = scaler
+
             else:
                 print(f'Column {column} Already Scaled!')
 
@@ -169,3 +167,72 @@ class Model(keras.Model):
 
     def plot_history(self):
         return plt.plot(self.history.history['loss'], label='train')
+
+    def predict_test(self):
+        self.X_test_pred = self.model.predict(self.X_test)
+
+    def calculate_loss(self, method="mean"):
+        col_idx = self.df.columns.get_loc('Close')
+        X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred)
+        X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
+        
+        if method == "mean":
+            test_mae_loss = np.mean(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
+
+        elif method == "flat":
+            test_mae_loss = np.abs(X_test_pred[:, col_idx].flatten() - X_test).reshape(-1, 1)
+    
+        elif method == "max":
+            test_mae_loss = np.max(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
+
+        elif method == "last":
+            test_mae_loss = np.abs(X_test_pred - X_test)
+
+        return test_mae_loss
+
+    def create_df(self):
+        test_score_df = pd.DataFrame(index=self.test[self.time_steps:].index)
+        test_mae_loss = self.calculate_loss("flat")
+        test_score_df['loss'] = test_mae_loss[:, 0]
+        test_score_df['Close'] = self.test[self.time_steps:].Close
+        prominence = 0.01
+        test_score_df.reset_index(inplace=True)
+        anomaly_indices = find_peaks(test_score_df['loss'], prominence=prominence)[0]
+        test_score_df['anomaly'] = False
+        test_score_df.iloc[anomaly_indices, test_score_df.columns.get_loc('anomaly')] = True
+        anomaly_indices = find_peaks(test_score_df['loss']*-1, prominence=prominence)[0]
+        test_score_df.iloc[anomaly_indices, test_score_df.columns.get_loc('anomaly')] = True
+        test_score_df.set_index('Date', inplace=True)
+        return test_score_df
+
+    def plot_anomaly(self):
+        test_score_df = self.create_df()
+        fig_original = px.line(x='Date', y='Close', data_frame=test_score_df.reset_index())
+        fig_original.update_yaxes(secondary_y=True)
+        fig_anomaly = px.scatter(x='Date', y = 'Close', data_frame=test_score_df.reset_index().query('anomaly == True').reset_index(), color_discrete_sequence=['green'], hover_data={'index':True})
+        fig_anomaly.update_yaxes(secondary_y=True)
+        fig = go.Figure(fig_original.data + fig_anomaly.data)
+        return fig
+
+    def close_vs_loss(self):
+        col_idx = self.df.columns.get_loc('Close')
+        X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred[:, 0][:, 0])
+        X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
+        df = pd.DataFrame([X_test, X_test_pred], index=['test', 'pred']).T
+        df['loss'] = np.abs(df['test'] - df['pred'])
+        fig4 = px.line(y='test', data_frame=df, color_discrete_sequence=['green'])
+        fig5 = px.line(y='pred', data_frame=df, color_discrete_sequence=['red'])
+        fig = go.Figure(fig4.data)
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['loss'],
+            name="loss",
+            yaxis="y2"
+        ))
+        fig.update_layout(yaxis2=dict(
+                anchor="free",
+                overlaying="y1",
+                side="right",
+                position=1.0
+            ))
+        return fig
