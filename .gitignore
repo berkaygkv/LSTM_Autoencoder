@@ -1,3 +1,4 @@
 btc.csv
 LSTM_Autoencoder_final_v2.ipynb
-**/__pycache__
+pytest_cache
+model/__pycache__
