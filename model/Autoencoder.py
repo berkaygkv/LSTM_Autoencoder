@@ -196,34 +196,34 @@ class Model(keras.Model):
 
         return test_mae_loss
 
-    def create_df(self, prominence):
+    def create_df(self, **kwargs):
         test_score_df = pd.DataFrame(index=self.test[self.time_steps:].index)
         test_mae_loss = self.calculate_loss("flat")
         test_score_df["loss"] = test_mae_loss[:, 0]
         test_score_df["Close"] = self.test[self.time_steps:].Close
         test_score_df.reset_index(inplace=True)
-        anomaly_indices, _ = find_peaks(test_score_df["loss"], prominence=prominence)
+        anomaly_indices, _ = find_peaks(test_score_df["loss"], **kwargs)
         test_score_df["anomaly"] = False
         test_score_df.iloc[
             anomaly_indices, test_score_df.columns.get_loc("anomaly")
         ] = True
-        anomaly_indices, _ = find_peaks(test_score_df["loss"] * -1, prominence=prominence)
+        anomaly_indices, _ = find_peaks(test_score_df["loss"] * -1, **kwargs)
         test_score_df.iloc[
             anomaly_indices, test_score_df.columns.get_loc("anomaly")
         ] = True
         test_score_df.set_index("Date", inplace=True)
-        return test_score_df
+        self.test_score_df = test_score_df
 
-    def plot_anomaly(self, prominence=0.01):
-        test_score_df = self.create_df(prominence)
+    def plot_anomaly(self, **kwargs):
+        self.create_df(**kwargs)
         fig_original = px.line(
-            x="Date", y="Close", data_frame=test_score_df.reset_index()
+            x="Date", y="Close", data_frame=self.test_score_df.reset_index()
         )
         fig_original.update_yaxes(secondary_y=True)
         fig_anomaly = px.scatter(
             x="Date",
             y="Close",
-            data_frame=test_score_df.reset_index()
+            data_frame=self.test_score_df.reset_index()
             .query("anomaly == True")
             .reset_index(),
             color_discrete_sequence=["green"],
@@ -237,12 +237,19 @@ class Model(keras.Model):
         col_idx = self.df.columns.get_loc("Close")
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred[:, 0][:, 0])
         X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
-        df = pd.DataFrame([X_test, X_test_pred], index=["test", "pred"]).T
+        data = {"test": X_test, "pred": X_test_pred}
+        df = pd.DataFrame(data, index=self.test_score_df.index)
         df["loss"] = np.abs(df["test"] - df["pred"])
-        fig4 = px.line(y="test", data_frame=df, color_discrete_sequence=["green"])
+        df['anomaly'] = self.test_score_df['anomaly']
+        fig4 = px.line(x="Date", y="loss", data_frame=df.reset_index(), color_discrete_sequence=['blue'])
+        fig4.update_traces(opacity=0.25)
+        fig2 = px.scatter(x='Date', y = 'loss', data_frame=df.reset_index().query('anomaly == True'), color_discrete_sequence=['green'])
+
         # fig5 = px.line(y='pred', data_frame=df, color_discrete_sequence=['red'])
         fig = go.Figure(fig4.data)
-        fig.add_trace(go.Scatter(x=df.index, y=df["loss"], name="loss", yaxis="y2"))
+        fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual", yaxis="y2"))
+        fig.add_trace(go.Scatter(x=df.query('anomaly == True').index, y=df.query('anomaly == True')["test"], name="Anomaly", yaxis="y2", mode="markers",marker=dict(color='green')))
+        
         fig.update_layout(
             yaxis2=dict(anchor="free", overlaying="y1", side="right", position=1.0)
         )
@@ -250,7 +257,7 @@ class Model(keras.Model):
 
     def save_model(self, target_folder_path, override=False):
         target_model_path = target_folder_path + f"/{target_folder_path} model.h5"
-        target_figure_path = target_folder_path + f"/{target_folder_path} loss.jpg"
+        # target_figure_path = target_folder_path + f"/{target_folder_path} loss.jpg"
         if not os.path.exists(target_folder_path):
             os.makedirs(target_folder_path)
             self.model.save(target_model_path)
@@ -263,7 +270,7 @@ class Model(keras.Model):
                 self.model.save(target_model_path)
 
     def load_model(self, target_folder_path, override=False):
-        target_model_path = target_folder_path + f"/{target_folder_path} model.h5"
+        target_model_path = "saved_models/" + target_folder_path + "/" + target_folder_path + ".h5"
         if not self.model:
             self.model = keras.models.load_model(target_model_path)
 
