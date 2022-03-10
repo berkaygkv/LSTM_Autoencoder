@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from tensorflow import keras
 from scipy.signal import find_peaks
 import json
+import os
 
 
 def extract_layers():
@@ -195,12 +196,11 @@ class Model(keras.Model):
 
         return test_mae_loss
 
-    def create_df(self):
+    def create_df(self, prominence):
         test_score_df = pd.DataFrame(index=self.test[self.time_steps:].index)
         test_mae_loss = self.calculate_loss("flat")
         test_score_df["loss"] = test_mae_loss[:, 0]
         test_score_df["Close"] = self.test[self.time_steps:].Close
-        prominence = 0.01
         test_score_df.reset_index(inplace=True)
         anomaly_indices, _ = find_peaks(test_score_df["loss"], prominence=prominence)
         test_score_df["anomaly"] = False
@@ -214,8 +214,8 @@ class Model(keras.Model):
         test_score_df.set_index("Date", inplace=True)
         return test_score_df
 
-    def plot_anomaly(self):
-        test_score_df = self.create_df()
+    def plot_anomaly(self, prominence=0.01):
+        test_score_df = self.create_df(prominence)
         fig_original = px.line(
             x="Date", y="Close", data_frame=test_score_df.reset_index()
         )
@@ -247,3 +247,29 @@ class Model(keras.Model):
             yaxis2=dict(anchor="free", overlaying="y1", side="right", position=1.0)
         )
         return fig
+
+    def save_model(self, target_folder_path, override=False):
+        target_model_path = target_folder_path + f"/{target_folder_path} model.h5"
+        target_figure_path = target_folder_path + f"/{target_folder_path} loss.jpg"
+        if not os.path.exists(target_folder_path):
+            os.makedirs(target_folder_path)
+            self.model.save(target_model_path)
+
+        else:
+            if not override:
+                print("Another model with the same name was already saved... Use override arg to proceed")
+
+            else:
+                self.model.save(target_model_path)
+
+    def load_model(self, target_folder_path, override=False):
+        target_model_path = target_folder_path + f"/{target_folder_path} model.h5"
+        if not self.model:
+            self.model = keras.models.load_model(target_model_path)
+
+        else:
+            if not override:
+                print("Another model in use... Use override arg to proceed")
+
+            else:
+                self.model = keras.models.load_model(target_model_path)
