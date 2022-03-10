@@ -108,12 +108,31 @@ class Model(keras.Model):
                 scaler.fit(self.train[[column]])
                 self.train[column] = scaler.transform(self.train[[column]])
                 self.test[column] = scaler.transform(self.test[[column]])
-                self.scaled_columns.update({column: True})
+                self.scaled_columns.update({column: scaler})
                 if column == "Close":
                     self.close_scaler = scaler
 
             else:
                 print(f"Column {column} Already Scaled!")
+
+    def single_scaling(self, df, **kwargs):
+        for column in self.df.columns:
+            df[column] = self.scaled_columns[column].transform(df[[column]])
+
+        X, y = self.reshape_dataset(
+            df[self.columns], df["Close"], self.time_steps
+        )
+
+        col_idx = df.columns.get_loc("Close")
+        X_pred = self.model.predict(X)
+        X_pred = self.close_scaler.inverse_transform(X_pred)
+        X = self.close_scaler.inverse_transform(X[:, col_idx][:, col_idx])
+        test_mae_loss = np.abs(X_pred[:, col_idx].flatten() - X).flatten()
+        peaks = find_peaks(test_mae_loss.flatten(), **kwargs)
+        return peaks, test_mae_loss
+        
+    def pull_out_df(self):
+        return self.df.copy()
 
     def reshape_dataset(self, X, y, time_steps):
         Xs, ys = [], []
