@@ -10,6 +10,7 @@ from tensorflow import keras
 from scipy.signal import find_peaks
 import json
 import os
+import jmespath
 
 
 def extract_layers():
@@ -46,11 +47,19 @@ class Model(keras.Model):
         self.scaled_columns = {}
         self.history = None
         self.model = None
+        self.model_id = None
         self.kf_plot_df = pd.DataFrame()
 
     def __repr__(self):
         return f"Model(dataframe=df, columns={self.columns}, n_of_units={self.n_of_units}, dropout_rate={self.dropout_rate}, time_steps={self.time_steps})"
 
+    def generate_model_id(self, epochs, batchsize):
+        cell_numbers = "-".join(jmespath.search("encoder.*.to_string(n_of_units)", layers))
+        time_steps = self.time_steps
+        kf_covariance_constant = self.KFilter_covariance
+        id_string = f"{cell_numbers}seq_{epochs}eps_{batchsize}bs_{time_steps}ts_{kf_covariance_constant}KFconst"
+        self.model_id = id_string
+    
     def apply_kfilter(self, dataframe):
         kf = KalmanFilter(
             initial_state_mean=dataframe.iloc[0]["Close"],
@@ -163,17 +172,38 @@ class Model(keras.Model):
         self.model.compile(loss="mae", optimizer=opt)
 
     def train_model(self, epochs=250, batch_size=128, verbose=1):
-        self.history = self.model.fit(
-            self.X_train,
-            self.y_train,
-            epochs=epochs,
-            batch_size=batch_size,
-            shuffle=False,
-            verbose=verbose,
+        _ = self.generate_model_id(epochs, batch_size)
+        target_model_path = "saved_models/" + self.model_id.split('seq_')[0] + "/" + self.model_id + ".h5"
+        if not os.path.exists(target_model_path):
+            self.history = self.model.fit(
+                self.X_train,
+                self.y_train,
+                epochs=epochs,
+                batch_size=batch_size,
+                shuffle=False,
+                verbose=verbose,
         )
+        
+        else:
+            self.load_model(self.model_id, override=True)
+            print(f"Model: {self.model_id} is loaded!")
 
     def plot_history(self):
         return plt.plot(self.history.history["loss"], label="train")
+
+    def write_history(self):
+
+        if os.path.exists("saved_models/history.json"):
+            with open("saved_models/history.json", "r") as read:
+                data = json.load(read)
+
+        else:
+            data = {}
+
+        data.update({self.model_id: self.history.history})
+
+        with open("saved_models/history.json", "w") as wr:
+            json.dump(data, wr,indent=4)
 
     def predict_test(self):
         self.X_test_pred = self.model.predict(self.X_test)
@@ -207,10 +237,10 @@ class Model(keras.Model):
         test_score_df.iloc[
             anomaly_indices, test_score_df.columns.get_loc("anomaly")
         ] = True
-        anomaly_indices, _ = find_peaks(test_score_df["loss"] * -1, **kwargs)
-        test_score_df.iloc[
-            anomaly_indices, test_score_df.columns.get_loc("anomaly")
-        ] = True
+        # anomaly_indices, _ = find_peaks(test_score_df["loss"] * -1, **kwargs)
+        # test_score_df.iloc[
+        #     anomaly_indices, test_score_df.columns.get_loc("anomaly")
+        # ] = True
         test_score_df.set_index("Date", inplace=True)
         self.test_score_df = test_score_df
 
@@ -243,40 +273,52 @@ class Model(keras.Model):
         df['anomaly'] = self.test_score_df['anomaly']
         fig4 = px.line(x="Date", y="loss", data_frame=df.reset_index(), color_discrete_sequence=['blue'])
         fig4.update_traces(opacity=0.25)
-        fig2 = px.scatter(x='Date', y = 'loss', data_frame=df.reset_index().query('anomaly == True'), color_discrete_sequence=['green'])
-
-        # fig5 = px.line(y='pred', data_frame=df, color_discrete_sequence=['red'])
+        # fig2 = px.scatter(x='Date', y = 'loss', data_frame=df.reset_index().query('anomaly == True'), color_discrete_sequence=['green'])
         fig = go.Figure(fig4.data)
         fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual", yaxis="y2"))
         fig.add_trace(go.Scatter(x=df.query('anomaly == True').index, y=df.query('anomaly == True')["test"], name="Anomaly", yaxis="y2", mode="markers",marker=dict(color='green')))
-        
         fig.update_layout(
             yaxis2=dict(anchor="free", overlaying="y1", side="right", position=1.0)
         )
         return fig
 
-    def save_model(self, target_folder_path, override=False):
-        target_model_path = target_folder_path + f"/{target_folder_path} model.h5"
+    def save_model(self, override=False):
+        target_folder_path = "saved_models/" + self.model_id.split('seq_')[0]
+        self.target_model_path = target_folder_path + f"/{self.model_id}.h5"
+
         # target_figure_path = target_folder_path + f"/{target_folder_path} loss.jpg"
         if not os.path.exists(target_folder_path):
             os.makedirs(target_folder_path)
-            self.model.save(target_model_path)
+
+        if self.model_id + ".h5" not in os.listdir(target_folder_path):
+            self.model.save(self.target_model_path)
+            if self.history:
+                self.write_history()
+            
 
         else:
             if not override:
                 print("Another model with the same name was already saved... Use override arg to proceed")
 
             else:
-                self.model.save(target_model_path)
+                self.model.save(self.target_model_path)
+                if self.history:
+                    self.write_history()
 
-    def load_model(self, target_folder_path, override=False):
-        target_model_path = "saved_models/" + target_folder_path + "/" + target_folder_path + ".h5"
-        if not self.model:
-            self.model = keras.models.load_model(target_model_path)
-
-        else:
-            if not override:
-                print("Another model in use... Use override arg to proceed")
+    def load_model(self, target_model_name, override=False):
+        target_model_path = "saved_models/" + target_model_name.split('seq_')[0] + "/" + target_model_name + ".h5"
+        self.model_id = target_model_name
+        if os.path.exists(target_model_path):
+            if not self.model:
+                self.model = keras.models.load_model(target_model_path)
 
             else:
-                self.model = keras.models.load_model(target_model_path)
+                if not override:
+                    print("Another model in use... Use override arg to proceed")
+
+                else:
+                    self.model = keras.models.load_model(target_model_path)
+        
+        else:
+            print(f"No model named {self.model_id}")
+
