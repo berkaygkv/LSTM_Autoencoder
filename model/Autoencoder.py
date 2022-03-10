@@ -5,12 +5,9 @@ import plotly.express as px
 from plotly import graph_objects as go
 from tensorflow import keras
 from pykalman import KalmanFilter
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from tensorflow import keras
 from scipy.signal import find_peaks
-import ta
-from scipy.signal import argrelextrema
-import warnings
 import json
 
 
@@ -65,18 +62,15 @@ class Model(keras.Model):
         return dataframe
 
     def plot_kfilter(self):
-        fig_kf = px.line(x='Date', y='Close', data_frame=self.kf_plot_df.reset_index(
-        ), color_discrete_sequence=['red'])
-        fig_original = px.line(x='Date', y='Close_original', data_frame=self.kf_plot_df.reset_index(
-        ), color_discrete_sequence=['green'])
+        fig_kf = px.line(x='Date', y='Close', data_frame=self.kf_plot_df.reset_index(), color_discrete_sequence=['red'])
+        fig_original = px.line(x='Date', y='Close_original', data_frame=self.kf_plot_df.reset_index(), color_discrete_sequence=['green'])
         fig_original.update_traces(line={'width': 0.5})
         fig = go.Figure(fig_kf.data + fig_original.data)
         return fig
 
     def train_split(self):
         train_size = int(len(self.df) * 0.95)
-        self.train, self.test = self.df.iloc[0:train_size], self.df.iloc[train_size:len(
-            self.df)]
+        self.train, self.test = self.df.iloc[0:train_size], self.df.iloc[train_size:len(self.df)]
         if self.KFilter_covariance:
             self.train = self.apply_kfilter(self.train)
         self.kf_plot_df = self.train.copy()
@@ -175,13 +169,11 @@ class Model(keras.Model):
         col_idx = self.df.columns.get_loc('Close')
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred)
         X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
-        
         if method == "mean":
             test_mae_loss = np.mean(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
 
         elif method == "flat":
             test_mae_loss = np.abs(X_test_pred[:, col_idx].flatten() - X_test).reshape(-1, 1)
-    
         elif method == "max":
             test_mae_loss = np.max(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
 
@@ -209,7 +201,7 @@ class Model(keras.Model):
         test_score_df = self.create_df()
         fig_original = px.line(x='Date', y='Close', data_frame=test_score_df.reset_index())
         fig_original.update_yaxes(secondary_y=True)
-        fig_anomaly = px.scatter(x='Date', y = 'Close', data_frame=test_score_df.reset_index().query('anomaly == True').reset_index(), color_discrete_sequence=['green'], hover_data={'index':True})
+        fig_anomaly = px.scatter(x='Date', y='Close', data_frame=test_score_df.reset_index().query('anomaly == True').reset_index(), color_discrete_sequence=['green'], hover_data={'index': True})
         fig_anomaly.update_yaxes(secondary_y=True)
         fig = go.Figure(fig_original.data + fig_anomaly.data)
         return fig
@@ -221,7 +213,7 @@ class Model(keras.Model):
         df = pd.DataFrame([X_test, X_test_pred], index=['test', 'pred']).T
         df['loss'] = np.abs(df['test'] - df['pred'])
         fig4 = px.line(y='test', data_frame=df, color_discrete_sequence=['green'])
-        fig5 = px.line(y='pred', data_frame=df, color_discrete_sequence=['red'])
+        # fig5 = px.line(y='pred', data_frame=df, color_discrete_sequence=['red'])
         fig = go.Figure(fig4.data)
         fig.add_trace(go.Scatter(
             x=df.index,
