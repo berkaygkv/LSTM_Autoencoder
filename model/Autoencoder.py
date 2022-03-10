@@ -57,7 +57,8 @@ class Model(keras.Model):
         cell_numbers = "-".join(jmespath.search("encoder.*.to_string(n_of_units)", layers))
         time_steps = self.time_steps
         kf_covariance_constant = self.KFilter_covariance
-        id_string = f"{cell_numbers}seq_{epochs}eps_{batchsize}bs_{time_steps}ts_{kf_covariance_constant}KFconst"
+        columns = ", ".join(self.columns)
+        id_string = f"{cell_numbers}seq_{epochs}eps_{batchsize}bs_{time_steps}ts_{kf_covariance_constant}KFconst-{columns}"
         self.model_id = id_string
     
     def apply_kfilter(self, dataframe):
