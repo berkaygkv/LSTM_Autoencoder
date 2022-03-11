@@ -2,3 +2,4 @@ btc.csv
 LSTM_Autoencoder_final_v2.ipynb
 .pytest_cache
 **/__pycache__/
+.ipynb_checkpoints
