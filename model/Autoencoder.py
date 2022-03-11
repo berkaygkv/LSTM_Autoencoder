@@ -118,20 +118,16 @@ class Model(keras.Model):
         for column in self.df.columns:
             df[column] = self.scaled_columns[column].transform(df[[column]])
 
-        X, y = self.reshape_dataset(
+        X, _ = self.reshape_dataset(
             df[self.columns], df["Close"], self.time_steps
         )
         col_idx = df.columns.get_loc("Close")
         X_pred = self.model.predict(X)
         X_pred = self.close_scaler.inverse_transform(X_pred)
         X = self.close_scaler.inverse_transform(X[:, col_idx][:, col_idx])
-        y = self.close_scaler.inverse_transform(y)
         test_mae_loss = np.abs(X_pred[:, col_idx].flatten() - X).flatten()
         peaks, _  = find_peaks(test_mae_loss, **kwargs)
-        return peaks, test_mae_loss, y
-        
-    def pull_out_df(self):
-        return self.df.copy()
+        return peaks, test_mae_loss
 
     def reshape_dataset(self, X, y, time_steps):
         Xs, ys = [], []
@@ -186,7 +182,6 @@ class Model(keras.Model):
             )
 
         self.model.add(keras.layers.TimeDistributed(keras.layers.Dense(units=1)))
-
         opt = keras.optimizers.Adam(learning_rate=self.learning_rate)
         self.model.compile(loss="mae", optimizer=opt)
 
@@ -220,29 +215,17 @@ class Model(keras.Model):
             data = {}
 
         data.update({self.model_id: self.history.history})
-
         with open("saved_models/history.json", "w") as wr:
             json.dump(data, wr,indent=4)
 
     def predict_test(self):
         self.X_test_pred = self.model.predict(self.X_test)
 
-    def calculate_loss(self, method="flat"):
+    def calculate_loss(self):
         col_idx = self.df.columns.get_loc("Close")
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred)
         X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
-        if method == "mean":
-            test_mae_loss = np.mean(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
-
-        elif method == "flat":
-            test_mae_loss = np.abs(X_test_pred[:, col_idx].flatten() - X_test).reshape(-1, 1)
-
-        elif method == "max":
-            test_mae_loss = np.max(np.abs(X_test_pred - X_test), axis=1).reshape(-1, 1)
-
-        elif method == "last":
-            test_mae_loss = np.abs(X_test_pred - X_test)
-
+        test_mae_loss = np.abs(X_test_pred[:, col_idx].flatten() - X_test).reshape(-1, 1)
         return test_mae_loss
 
     def create_df(self, **kwargs):
@@ -256,10 +239,6 @@ class Model(keras.Model):
         test_score_df.iloc[
             anomaly_indices, test_score_df.columns.get_loc("anomaly")
         ] = True
-        # anomaly_indices, _ = find_peaks(test_score_df["loss"] * -1, **kwargs)
-        # test_score_df.iloc[
-        #     anomaly_indices, test_score_df.columns.get_loc("anomaly")
-        # ] = True
         test_score_df.set_index("Date", inplace=True)
         self.test_score_df = test_score_df
 
@@ -292,7 +271,6 @@ class Model(keras.Model):
         df['anomaly'] = self.test_score_df['anomaly']
         fig4 = px.line(x="Date", y="loss", data_frame=df.reset_index(), color_discrete_sequence=['blue'])
         fig4.update_traces(opacity=0.25)
-        # fig2 = px.scatter(x='Date', y = 'loss', data_frame=df.reset_index().query('anomaly == True'), color_discrete_sequence=['green'])
         fig = go.Figure(fig4.data)
         fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual", yaxis="y2"))
         fig.add_trace(go.Scatter(x=df.query('anomaly == True').index, y=df.query('anomaly == True')["test"], name="Anomaly", yaxis="y2", mode="markers",marker=dict(color='green')))
@@ -304,8 +282,6 @@ class Model(keras.Model):
     def save_model(self, override=False):
         target_folder_path = "saved_models/" + self.model_id.split('seq_')[0]
         self.target_model_path = target_folder_path + f"/{self.model_id}.h5"
-
-        # target_figure_path = target_folder_path + f"/{target_folder_path} loss.jpg"
         if not os.path.exists(target_folder_path):
             os.makedirs(target_folder_path)
 
@@ -314,7 +290,6 @@ class Model(keras.Model):
             if self.history:
                 self.write_history()
             
-
         else:
             if not override:
                 print("Another model with the same name was already saved... Use override arg to proceed")
