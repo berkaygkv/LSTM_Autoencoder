@@ -12,7 +12,8 @@ import json
 import os
 import jmespath
 import matplotlib
-matplotlib.rcParams['figure.figsize'] = (15, 8)
+
+matplotlib.rcParams["figure.figsize"] = (15, 8)
 
 
 class Model(keras.Model):
@@ -53,13 +54,15 @@ class Model(keras.Model):
         return js
 
     def generate_model_id(self, epochs, batchsize):
-        cell_numbers = "-".join(jmespath.search("encoder.*.to_string(n_of_units)", self.layers_json))
+        cell_numbers = "-".join(
+            jmespath.search("encoder.*.to_string(n_of_units)", self.layers_json)
+        )
         time_steps = self.time_steps
         kf_covariance_constant = self.KFilter_covariance
         columns = ", ".join(self.columns)
         id_string = f"{cell_numbers}seq_{epochs}eps_{batchsize}bs_{time_steps}ts_{kf_covariance_constant}KFconst-{columns}"
         self.model_id = id_string
-    
+
     def apply_kfilter(self, dataframe):
         kf = KalmanFilter(
             initial_state_mean=dataframe.iloc[0]["Close"],
@@ -118,15 +121,13 @@ class Model(keras.Model):
         for column in self.df.columns:
             df[column] = self.scaled_columns[column].transform(df[[column]])
 
-        X, _ = self.reshape_dataset(
-            df[self.columns], df["Close"], self.time_steps
-        )
+        X, _ = self.reshape_dataset(df[self.columns], df["Close"], self.time_steps)
         col_idx = df.columns.get_loc("Close")
         X_pred = self.model.predict(X)
         X_pred = self.close_scaler.inverse_transform(X_pred)
         X = self.close_scaler.inverse_transform(X[:, col_idx][:, col_idx])
         test_mae_loss = np.abs(X_pred[:, col_idx].flatten() - X).flatten()
-        peaks, _  = find_peaks(test_mae_loss, **kwargs)
+        peaks, _ = find_peaks(test_mae_loss, **kwargs)
         return peaks, test_mae_loss
 
     def reshape_dataset(self, X, y, time_steps):
@@ -196,8 +197,8 @@ class Model(keras.Model):
                 batch_size=batch_size,
                 shuffle=False,
                 verbose=verbose,
-        )
-        
+            )
+
         else:
             self.load_model(self.model_id, override=True)
             print(f"Model: {self.model_id} is loaded!")
@@ -216,7 +217,7 @@ class Model(keras.Model):
 
         data.update({self.model_id: self.history.history})
         with open("saved_models/history.json", "w") as wr:
-            json.dump(data, wr,indent=4)
+            json.dump(data, wr, indent=4)
 
     def predict_test(self):
         self.X_test_pred = self.model.predict(self.X_test)
@@ -226,6 +227,7 @@ class Model(keras.Model):
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred)
         X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
         test_mae_loss = np.abs(X_test_pred[:, col_idx].flatten() - X_test).reshape(-1, 1)
+
         return test_mae_loss
 
     def create_df(self, **kwargs):
@@ -264,23 +266,39 @@ class Model(keras.Model):
     def close_vs_loss(self):
         col_idx = self.df.columns.get_loc("Close")
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred[:, 0][:, 0])
-        X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
+        X_test = self.close_scaler.inverse_transform(
+            self.X_test[:, col_idx][:, col_idx]
+        )
         data = {"test": X_test, "pred": X_test_pred}
         df = pd.DataFrame(data, index=self.test_score_df.index)
         df["loss"] = np.abs(df["test"] - df["pred"])
-        df['anomaly'] = self.test_score_df['anomaly']
-        fig4 = px.line(x="Date", y="loss", data_frame=df.reset_index(), color_discrete_sequence=['blue'])
+        df["anomaly"] = self.test_score_df["anomaly"]
+        fig4 = px.line(
+            x="Date",
+            y="loss",
+            data_frame=df.reset_index(),
+            color_discrete_sequence=["blue"],
+        )
         fig4.update_traces(opacity=0.25)
         fig = go.Figure(fig4.data)
         fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual", yaxis="y2"))
-        fig.add_trace(go.Scatter(x=df.query('anomaly == True').index, y=df.query('anomaly == True')["test"], name="Anomaly", yaxis="y2", mode="markers",marker=dict(color='green')))
+        fig.add_trace(
+            go.Scatter(
+                x=df.query("anomaly == True").index,
+                y=df.query("anomaly == True")["test"],
+                name="Anomaly",
+                yaxis="y2",
+                mode="markers",
+                marker=dict(color="green"),
+            )
+        )
         fig.update_layout(
             yaxis2=dict(anchor="free", overlaying="y1", side="right", position=1.0)
         )
         return fig
 
     def save_model(self, override=False):
-        target_folder_path = "saved_models/" + self.model_id.split('seq_')[0]
+        target_folder_path = "saved_models/" + self.model_id.split("seq_")[0]
         self.target_model_path = target_folder_path + f"/{self.model_id}.h5"
         if not os.path.exists(target_folder_path):
             os.makedirs(target_folder_path)
@@ -289,10 +307,12 @@ class Model(keras.Model):
             self.model.save(self.target_model_path)
             if self.history:
                 self.write_history()
-            
+
         else:
             if not override:
-                print("Another model with the same name was already saved... Use override arg to proceed")
+                print(
+                    "Another model with the same name was already saved... Use override arg to proceed"
+                )
 
             else:
                 self.model.save(self.target_model_path)
@@ -312,7 +332,6 @@ class Model(keras.Model):
 
                 else:
                     self.model = keras.models.load_model(target_model_path)
-        
+
         else:
             print(f"No model named {self.model_id}")
-
