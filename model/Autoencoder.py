@@ -17,12 +17,25 @@ matplotlib.rcParams["figure.figsize"] = (15, 8)
 
 
 class Model(keras.Model):
+    """Class Object that handles all the operations to build an end-to-end LSTM Autoencoder Keras Model for BTC data.
+    Upon providing a JSON file that contains Neural Net architecture (e.g., layers.json) including an 'encoder' and
+    a 'decoder' layer, the model is ready be built with the default arguments. Accepts a dataframe object, a list of 
+    features, time steps, learning rate and Kalman Filter Covariance Constant. Once the model is built it can be saved/loaded 
+    in order to be cached for later use. In addition, there are utility tools that can be used to output training loss graphs,
+    predictions and charts.
+
+    Args:
+        dataframe: BTC data with Close Price values, optionally, in addition to other features (e.g., Volume)
+        columns: a list object that will be used to train the model
+        time_steps: number of look-back time steps
+        learning_rate: keyword argument for keras model
+        KFilter_covariance: Kalman Filter Covariance constant to be used in preprocessing step. The filter smoothens the data
+        to make the model as sensitive to strong deviations as possible.
+    """
     def __init__(
         self,
         dataframe: pd.DataFrame,
         columns: list = ["Close"],
-        n_of_units: int = 512,
-        dropout_rate: int = 0.4,
         time_steps: int = 5,
         learning_rate: float = 0.0001,
         KFilter_covariance: float = 0.1,
@@ -32,8 +45,6 @@ class Model(keras.Model):
         self.df = dataframe[columns]
         self.columns = columns
         self.KFilter_covariance = KFilter_covariance
-        self.n_of_units = n_of_units
-        self.dropout_rate = dropout_rate
         self.time_steps = time_steps
         self.learning_rate = learning_rate
         self.train = pd.DataFrame()
@@ -46,14 +57,16 @@ class Model(keras.Model):
         self.layers_json = self.extract_layers()
 
     def __repr__(self):
-        return f"Model(dataframe=df, columns={self.columns}, n_of_units={self.n_of_units}, dropout_rate={self.dropout_rate}, time_steps={self.time_steps})"
+        return f"Model(dataframe=df, columns={self.columns}, time_steps={self.time_steps}, KFilter_covariance={self.KFilter_covariance}, learning_rate={self.learning_rate})"
 
     def extract_layers(self):
+        "Function to read Neural Net architecture."
         with open("layers.json") as rd:
             js = json.load(rd)
         return js
 
     def generate_model_id(self, epochs, batchsize):
+        """Generates unique model id for model storing purposes."""
         cell_numbers = "-".join(
             jmespath.search("encoder.*.to_string(n_of_units)", self.layers_json)
         )
@@ -64,6 +77,14 @@ class Model(keras.Model):
         self.model_id = id_string
 
     def apply_kfilter(self, dataframe):
+        """Applies Kalman Filter to smooth the inputted data.
+
+        Args:
+            dataframe: Target Dataframe to be processed.
+
+        Returns:
+            pandas.DataFrame: Returns the processed dataframe.
+        """
         kf = KalmanFilter(
             initial_state_mean=dataframe.iloc[0]["Close"],
             n_dim_obs=1,
@@ -76,6 +97,11 @@ class Model(keras.Model):
         return dataframe
 
     def plot_kfilter(self):
+        """Plots the input data with and without Kalman Filter applied.
+
+        Returns:
+            plotly.graph_objs._figure.Figure: Plotly line chart.
+        """
         fig_kf = px.line(
             x="Date",
             y="Close",
@@ -93,6 +119,8 @@ class Model(keras.Model):
         return fig
 
     def train_split(self):
+        """Split the data into train and test sets.
+        """
         train_size = int(len(self.df) * 0.95)
         self.train, self.test = (
             self.df.iloc[0:train_size],
@@ -104,6 +132,8 @@ class Model(keras.Model):
         print(f"Train shape: {self.train.shape}, Test shape: {self.test.shape}")
 
     def scaling(self):
+        """Applies Standard Scale to the train and test data.
+        """
         for column in self.df.columns:
             if not self.scaled_columns.get(column, False):
                 scaler = StandardScaler()
@@ -117,7 +147,15 @@ class Model(keras.Model):
             else:
                 print(f"Column {column} Already Scaled!")
 
-    def single_scaling(self, df, **kwargs):
+    def predict(self, df, **kwargs):
+        """Detects anomalies in the given dataframe.
+
+        Args:
+            df: Dataframe that will be predicted.
+
+        Returns:
+            numpy.array: Returns an array of indices with the peak loss values and an array of losses
+        """
         for column in self.df.columns:
             df[column] = self.scaled_columns[column].transform(df[[column]])
 
@@ -131,6 +169,16 @@ class Model(keras.Model):
         return peaks, test_mae_loss
 
     def reshape_dataset(self, X, y, time_steps):
+        """Reshapes the data set into sequences of 5 time steps.
+
+        Args:
+            X: Feature values that will be used to make predictions.
+            y: Array of target values that will be predicted.
+            time_steps: Number of time steps that will be looked into the history
+
+        Returns:
+            numpy.array: Returns an array of feature and target values in the given time step sequence. 
+        """
         Xs, ys = [], []
         for i in range(len(X) - time_steps):
             v = X.iloc[i: (i + time_steps)].values
@@ -139,7 +187,8 @@ class Model(keras.Model):
         return np.array(Xs), np.array(ys)
 
     def prepare_data(self):
-        # reshape to [samples, time_steps, n_features]
+        """Main function to initiate reshaping operations for both train and test data.
+        """
         self.X_train, self.y_train = self.reshape_dataset(
             self.train[self.columns], self.train["Close"], self.time_steps
         )
@@ -149,6 +198,8 @@ class Model(keras.Model):
         print(f"X_train Shape: {self.X_train.shape}, X_test Shape: {self.X_test.shape}")
 
     def build_model(self):
+        """Model building function that reads the provided Neural Net Architecture JSON and compiles an LSTM Autoencoder model.
+        """
         keras.backend.clear_session()
         self.model = keras.Sequential()
         for layer in self.layers_json["encoder"]:
@@ -187,6 +238,8 @@ class Model(keras.Model):
         self.model.compile(loss="mae", optimizer=opt)
 
     def train_model(self, epochs=250, batch_size=128, verbose=1):
+        """Function initating training session with the given epoch and batch size parameters.
+        """
         _ = self.generate_model_id(epochs, batch_size)
         target_model_path = "saved_models/" + self.model_id.split('seq_')[0] + "/" + self.model_id + ".h5"
         if not os.path.exists(target_model_path):
@@ -204,10 +257,16 @@ class Model(keras.Model):
             print(f"Model: {self.model_id} is loaded!")
 
     def plot_history(self):
+        """Plots loss values across epochs.
+
+        Returns:
+            matplotlib.pyplot.plot: Loss vs. epoch chart.
+        """
         return plt.plot(self.history.history["loss"], label="train")
 
     def write_history(self):
-
+        """Stores and aggregates the loss values of the trained model into a JSON file.
+        """
         if os.path.exists("saved_models/history.json"):
             with open("saved_models/history.json", "r") as read:
                 data = json.load(read)
@@ -220,9 +279,16 @@ class Model(keras.Model):
             json.dump(data, wr, indent=4)
 
     def predict_test(self):
+        """Predicts test data.
+        """
         self.X_test_pred = self.model.predict(self.X_test)
 
     def calculate_loss(self):
+        """Calculates losses of each predictions.
+
+        Returns:
+            numpy.array: Returns an array of losses.
+        """
         col_idx = self.df.columns.get_loc("Close")
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred)
         X_test = self.close_scaler.inverse_transform(self.X_test[:, col_idx][:, col_idx])
@@ -231,8 +297,11 @@ class Model(keras.Model):
         return test_mae_loss
 
     def create_df(self, **kwargs):
+        """Creates a dataframe that contains the actual close prices and loss values of each predictions
+        and extract significantly deviated predictions as anomalies.
+        """
         test_score_df = pd.DataFrame(index=self.test[self.time_steps:].index)
-        test_mae_loss = self.calculate_loss("flat")
+        test_mae_loss = self.calculate_loss()
         test_score_df["loss"] = test_mae_loss[:, 0]
         test_score_df["Close"] = self.test[self.time_steps:].Close
         test_score_df.reset_index(inplace=True)
@@ -244,7 +313,13 @@ class Model(keras.Model):
         test_score_df.set_index("Date", inplace=True)
         self.test_score_df = test_score_df
 
+    # This method will be merged with 'close_vs_loss' method
     def plot_anomaly(self, **kwargs):
+        """Plots the actual close prices with the anomalous datapoints pinned.
+
+        Returns:
+            plotly.graph_objs._figure.Figure: Figure that shows the anomalies in the actual prices data.
+        """
         self.create_df(**kwargs)
         fig_original = px.line(
             x="Date", y="Close", data_frame=self.test_score_df.reset_index()
@@ -264,6 +339,11 @@ class Model(keras.Model):
         return fig
 
     def close_vs_loss(self):
+        """Plots the actual close prices along with the corresponding loss values.
+
+        Returns:
+            plotly.graph_objs._figure.Figure: Figure that shows the anomalies in the actual prices data and the losses.
+        """
         col_idx = self.df.columns.get_loc("Close")
         X_test_pred = self.close_scaler.inverse_transform(self.X_test_pred[:, 0][:, 0])
         X_test = self.close_scaler.inverse_transform(
@@ -298,6 +378,12 @@ class Model(keras.Model):
         return fig
 
     def save_model(self, override=False):
+        """Function to save the model in the saved models folder.
+
+        Args:
+            override (bool, optional): In case of an already stored model in the folder this option will 
+            be used to override the current. Defaults to False. 
+        """
         target_folder_path = "saved_models/" + self.model_id.split("seq_")[0]
         self.target_model_path = target_folder_path + f"/{self.model_id}.h5"
         if not os.path.exists(target_folder_path):
@@ -320,6 +406,13 @@ class Model(keras.Model):
                     self.write_history()
 
     def load_model(self, target_model_name, override=False):
+        """Function to load the model from saved models folder. In case of trying to train an already stored model,
+        this function will call the stored model from the folder instead of initating the training model from scratch.
+
+        Args:
+            target_model_name (string): Name of the model will be loaded.
+            override (bool, optional): True if an active instance model will be replaced with the stored one. Defaults to False.
+        """
         target_model_path = "saved_models/" + target_model_name.split('seq_')[0] + "/" + target_model_name + ".h5"
         self.model_id = target_model_name
         if os.path.exists(target_model_path):
