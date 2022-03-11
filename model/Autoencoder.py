@@ -11,15 +11,8 @@ from scipy.signal import find_peaks
 import json
 import os
 import jmespath
-
-
-def extract_layers():
-    with open("layers.json") as rd:
-        js = json.load(rd)
-    return js
-
-
-layers = extract_layers()
+import matplotlib
+matplotlib.rcParams['figure.figsize'] = (15, 8)
 
 
 class Model(keras.Model):
@@ -49,12 +42,18 @@ class Model(keras.Model):
         self.model = None
         self.model_id = None
         self.kf_plot_df = pd.DataFrame()
+        self.layers_json = self.extract_layers()
 
     def __repr__(self):
         return f"Model(dataframe=df, columns={self.columns}, n_of_units={self.n_of_units}, dropout_rate={self.dropout_rate}, time_steps={self.time_steps})"
 
+    def extract_layers(self):
+        with open("layers.json") as rd:
+            js = json.load(rd)
+        return js
+
     def generate_model_id(self, epochs, batchsize):
-        cell_numbers = "-".join(jmespath.search("encoder.*.to_string(n_of_units)", layers))
+        cell_numbers = "-".join(jmespath.search("encoder.*.to_string(n_of_units)", self.layers_json))
         time_steps = self.time_steps
         kf_covariance_constant = self.KFilter_covariance
         columns = ", ".join(self.columns)
@@ -122,14 +121,14 @@ class Model(keras.Model):
         X, y = self.reshape_dataset(
             df[self.columns], df["Close"], self.time_steps
         )
-
         col_idx = df.columns.get_loc("Close")
         X_pred = self.model.predict(X)
         X_pred = self.close_scaler.inverse_transform(X_pred)
         X = self.close_scaler.inverse_transform(X[:, col_idx][:, col_idx])
+        y = self.close_scaler.inverse_transform(y)
         test_mae_loss = np.abs(X_pred[:, col_idx].flatten() - X).flatten()
-        peaks = find_peaks(test_mae_loss.flatten(), **kwargs)
-        return peaks, test_mae_loss
+        peaks, _  = find_peaks(test_mae_loss, **kwargs)
+        return peaks, test_mae_loss, y
         
     def pull_out_df(self):
         return self.df.copy()
@@ -155,13 +154,13 @@ class Model(keras.Model):
     def build_model(self):
         keras.backend.clear_session()
         self.model = keras.Sequential()
-        for layer in layers["encoder"]:
+        for layer in self.layers_json["encoder"]:
             if layer == "input_layer":
                 self.model.add(
                     keras.layers.LSTM(
                         input_shape=(self.X_train.shape[1], self.X_train.shape[2]),
-                        units=layers["encoder"][layer]["n_of_units"],
-                        return_sequences=layers["encoder"][layer]["return_sequences"],
+                        units=self.layers_json["encoder"][layer]["n_of_units"],
+                        return_sequences=self.layers_json["encoder"][layer]["return_sequences"],
                         name=layer,
                     )
                 )
@@ -169,19 +168,19 @@ class Model(keras.Model):
             else:
                 self.model.add(
                     keras.layers.LSTM(
-                        units=layers["encoder"][layer]["n_of_units"],
-                        return_sequences=layers["encoder"][layer]["return_sequences"],
+                        units=self.layers_json["encoder"][layer]["n_of_units"],
+                        return_sequences=self.layers_json["encoder"][layer]["return_sequences"],
                         name=layer,
                     )
                 )
 
         self.model.add(keras.layers.RepeatVector(n=self.X_train.shape[1]))
 
-        for layer in layers["decoder"]:
+        for layer in self.layers_json["decoder"]:
             self.model.add(
                 keras.layers.LSTM(
-                    units=layers["decoder"][layer]["n_of_units"],
-                    return_sequences=layers["decoder"][layer]["return_sequences"],
+                    units=self.layers_json["decoder"][layer]["n_of_units"],
+                    return_sequences=self.layers_json["decoder"][layer]["return_sequences"],
                     name=layer,
                 )
             )
