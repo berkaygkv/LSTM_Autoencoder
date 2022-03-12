@@ -42,7 +42,7 @@ For this approach, I have applied Kalman Filter and the results seemed confirmin
 ## Getting Started
 
 
-The project will be dockerized soon. Until then, you can access the [Nbviewer](https://nbviewer.org/github/berkaygkv/LSTM_Autoencoder/blob/master/anomaly_detection_nb.ipynb) of the notebook to interact with the Plotly charts.
+The project will be dockerized soon. Until then, you can access the [Nbviewer](https://nbviewer.org/github/berkaygkv/LSTM_Autoencoder/blob/master/anomaly_detection_nb.ipynb) version of the notebook to interact with the Plotly charts.
 
 
 ## Contact
