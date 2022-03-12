@@ -108,14 +108,20 @@ class Model(keras.Model):
             data_frame=self.kf_plot_df.reset_index(),
             color_discrete_sequence=["red"],
         )
+
+        fig_kf.data[0]["name"] = "KFiltered Data"
+        fig_kf.data[0]["showlegend"] = True
         fig_original = px.line(
             x="Date",
             y="Close_original",
             data_frame=self.kf_plot_df.reset_index(),
             color_discrete_sequence=["green"],
         )
+        fig_original.data[0]["name"] = "Original Data"
+        fig_original.data[0]["showlegend"] = True
         fig_original.update_traces(line={"width": 0.5})
         fig = go.Figure(fig_kf.data + fig_original.data)
+
         return fig
 
     def train_split(self):
@@ -359,9 +365,11 @@ class Model(keras.Model):
             data_frame=df.reset_index(),
             color_discrete_sequence=["blue"],
         )
+        fig4.data[0]["name"] = "Loss"
+        fig4.data[0]["showlegend"] = True
         fig4.update_traces(opacity=0.25)
         fig = go.Figure(fig4.data)
-        fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual", yaxis="y2"))
+        fig.add_trace(go.Scatter(x=df.index, y=df["test"], name="Actual Price", yaxis="y2"))
         fig.add_trace(
             go.Scatter(
                 x=df.query("anomaly == True").index,
