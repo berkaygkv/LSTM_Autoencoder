@@ -31,8 +31,8 @@ Often times you come across people trying to predict cryptocurrency or stock pri
 
 **Autoencoder** is a neural net architecture that allows labeling anomalies in the data without the necessity of explicitly feeding any labels into the model in the training phase. In the most basic sense, unlike the other prediction approaches you create a model that predicts the input sequence itself instead of a supposedly unknown value in the future. The model predicts the input sequence as accurate as possible and if the predicted value is significantly poor one, this is a sign that the given sequence is anomalous. By doing this you make the model learn the frequently occuring patterns so much that the model becomes super-sensitive to the deviations in the data. 
 
-One novel (I bet it is) approach I came up with is that what if I "truncate" the peaks and dips in the training data by using smoothing techniques. This leads the spikes will be regarded as anomalous by the model since the model has not been exposed to any of the peaks or dips in the training phase.
-For this approach, I have applied Kalman Filter and the results seemed confirming the efficiency of the experimented model.
+One novel (I bet it is) approach I came up with is that what if I "truncate" the peaks and dips in the training data by using smoothing techniques. This leads the spikes to be be regarded as anomalous by the model, since the model has not been exposed to any kind of peaks or dips in the training phase.
+For this approach, I have applied Kalman Filter as for the smoothing technique and the results seemed confirming the efficiency of the experimented model.
 
 
 ---
