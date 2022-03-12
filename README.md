@@ -1,3 +1,23 @@
+<!--
+*** Thanks for checking out the Best-README-Template. If you have a suggestion
+*** that would make this better, please fork the repo and create a pull request
+*** or simply open an issue with the tag "enhancement".
+*** Don't forget to give the project a star!
+*** Thanks again! Now go create something AMAZING! :D
+-->
+
+
+
+<!-- PROJECT SHIELDS -->
+<!--
+*** I'm using markdown "reference style" links for readability.
+*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
+*** See the bottom of this document for the declaration of the reference variables
+*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
+*** https://www.markdownguide.org/basic-syntax/#reference-style-links
+-->
+[![LinkedIn][linkedin-shield]][https://www.linkedin.com/in/berkaygkv/]
+
 # LSTM Autoencoder Engine for Bitcoin Data
 <!-- PROJECT LOGO -->
 
@@ -39,3 +59,10 @@ _P.S: I can only argue in my humble opinion that the Autoencoder approach "seems
 
 One novel (I bet it is) approach I came up with is that what if I "truncate" the peaks and dips in the training data by using smoothing techniques. This results in the peaks and dips will be regarded as anomalous by the model since the model has not seen any peaks or dips in the training phase.
 For this approach, I have applied Kalman Filter and the results seemed confirming the efficiency of the experimented model.
+
+
+## Contact
+Berkay Gökova - berkaygokova@gmail.com
+
+
+<p align="right">(<a href="#top">back to top</a>)</p>
